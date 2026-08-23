@@ -1,5 +1,5 @@
 -- ╔════════════════════════════════════════════════════════════════╗
--- ║     NEPTUNE.LUA BABFT — MACOS UI (SPEED/JUMP FIXED)           ║
+-- ║       NEPTUNE.LUA BABFT — WITH AUTO FARM & ULTRA FARM          ║
 -- ╚════════════════════════════════════════════════════════════════╝
 
 local Players           = game:GetService("Players")
@@ -31,7 +31,7 @@ local State = {
     noclip    = false,
     god       = false,
     autofarm  = false,
-    antikick  = false,
+    ultrafarm = false,
     speed     = false,
     jump      = false,
     infjump   = false,
@@ -41,7 +41,6 @@ local State = {
     goldesp   = false,
     clicktp   = false,
     invisible = false,
-    fpsboost  = false,
     shaders   = false,
     flySpeed  = 80,
     farmSpeed = 450,
@@ -62,6 +61,9 @@ local currentTween = nil
 local activeSettingsOwner = nil
 local autoKillConnection = nil
 local autoFarm2Loop = nil
+local ultraKillConnection = nil
+local ultraFarm2Loop = nil
+local antiKickConnection = nil
 local originalLightingProps = {}
 local customAtmosphere = nil
 local customColorCorrection = nil
@@ -351,6 +353,48 @@ local function forceKillCharacter(char)
     if head then head:Destroy() end
 end
 
+local runSingleCycle
+local startAutoKillLoop
+local runUltraSingleCycle
+local startUltraKillLoop
+
+-- Применение оптимизации FPS для Ultra Farm
+local function applyFpsBoost(on)
+    if on then
+        originalLightingProps.GlobalShadows = Lighting.GlobalShadows
+        originalLightingProps.FogEnd = Lighting.FogEnd
+        Lighting.GlobalShadows = false
+        Lighting.FogEnd = 999999
+        for _, obj in ipairs(Workspace:GetDescendants()) do
+            if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
+                obj.Enabled = false
+            elseif obj:IsA("BasePart") then
+                obj.Material = Enum.Material.SmoothPlastic
+                obj.Reflectance = 0
+            end
+        end
+    else
+        Lighting.GlobalShadows = originalLightingProps.GlobalShadows or true
+        Lighting.FogEnd = originalLightingProps.FogEnd or 100000
+    end
+end
+
+-- Включение защиты от кика (Anti-Kick)
+local function startAntiKick()
+    if antiKickConnection then pcall(function() task.cancel(antiKickConnection) end) end
+    antiKickConnection = task.spawn(function()
+        local vu = game:GetService("VirtualUser")
+        while State.ultrafarm do
+            pcall(function()
+                vu:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+                task.wait(1)
+                vu:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+            end)
+            task.wait(50)
+        end
+    end)
+end
+
 local function startAutoFarm2Loop()
     if autoFarm2Loop then
         pcall(function() task.cancel(autoFarm2Loop) end)
@@ -391,11 +435,49 @@ local function startAutoFarm2Loop()
     end)
 end
 
-local runSingleCycle
-local startAutoKillLoop
+local function startUltraFarm2Loop()
+    if ultraFarm2Loop then
+        pcall(function() task.cancel(ultraFarm2Loop) end)
+        ultraFarm2Loop = nil
+    end
+    ultraFarm2Loop = task.spawn(function()
+        while State.ultrafarm do
+            local char = player.Character
+            if char and char:FindFirstChild("HumanoidRootPart") then
+                local normalStages = Workspace:FindFirstChild("BoatStages") and Workspace.BoatStages:FindFirstChild("NormalStages")
+                if normalStages then
+                    for i = 1, 10 do
+                        if not State.ultrafarm then break end
+                        local stage = normalStages:FindFirstChild("CaveStage" .. i)
+                        if stage and stage:FindFirstChild("DarknessPart") then
+                            char.HumanoidRootPart.CFrame = stage.DarknessPart.CFrame
+                            
+                            local tempPart = Instance.new("Part", char)
+                            tempPart.Anchored = true
+                            tempPart.Size = Vector3.new(6, 1, 6)
+                            
+                            local backPos = char.HumanoidRootPart.CFrame + (char.HumanoidRootPart.CFrame.LookVector * 10) - Vector3.new(0, 3, 0)
+                            tempPart.CFrame = backPos
+                            char.HumanoidRootPart.CFrame = backPos + Vector3.new(0, 4, 0)
+                            
+                            task.wait(1.7)
+                            tempPart:Destroy()
+                        end
+                    end
+
+                    if State.ultrafarm then
+                        forceKillCharacter(char)
+                    end
+                end
+            end
+            task.wait(3)
+        end
+    end)
+end
 
 createModule(colPlayer, "God Mode", function(on) State.god = on end)
 
+-- Стандартный Auto Farm
 createModule(colPlayer, "Auto Farm", function(on)
     State.autofarm = on
     if on then
@@ -409,6 +491,60 @@ createModule(colPlayer, "Auto Farm", function(on)
         if currentTween then currentTween:Cancel() end
         if autoKillConnection then pcall(function() task.cancel(autoKillConnection) end); autoKillConnection = nil end
         if autoFarm2Loop then pcall(function() task.cancel(autoFarm2Loop) end); autoFarm2Loop = nil end
+        State.noclip = false
+    end
+end, function(popup)
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -12, 0, 18)
+    lbl.Position = UDim2.new(0, 6, 0, 30)
+    lbl.BackgroundTransparency = 1
+    lbl.TextColor3 = C.text
+    lbl.TextSize = 10
+    lbl.Font = Enum.Font.Code
+    lbl.Text = "Mode: " .. State.farmMode
+    lbl.ZIndex = 11
+    lbl.Parent = popup
+
+    local btnMode = Instance.new("TextButton")
+    btnMode.Size = UDim2.new(1, -12, 0, 22)
+    btnMode.Position = UDim2.new(0, 6, 0, 52)
+    btnMode.BackgroundColor3 = C.panel
+    btnMode.TextColor3 = C.accent
+    btnMode.TextSize = 10
+    btnMode.Font = Enum.Font.Code
+    btnMode.Text = "Switch Method"
+    btnMode.ZIndex = 11
+    btnMode.Parent = popup
+    Instance.new("UICorner", btnMode).CornerRadius = UDim.new(0, 3)
+
+    btnMode.MouseButton1Click:Connect(function()
+        if State.farmMode == "Method 1" then
+            State.farmMode = "Method 2"
+        else
+            State.farmMode = "Method 1"
+        end
+        lbl.Text = "Mode: " .. State.farmMode
+    end)
+end)
+
+-- Новый отдельный Ultra Farm (Фарм + Анти-кик + Буст FPS)
+createModule(colPlayer, "Ultra Farm", function(on)
+    State.ultrafarm = on
+    if on then
+        applyFpsBoost(true)
+        startAntiKick()
+        if State.farmMode == "Method 1" then
+            if player.Character then task.spawn(function() runUltraSingleCycle(player.Character) end) end
+            startUltraKillLoop()
+        else
+            startUltraFarm2Loop()
+        end
+    else
+        applyFpsBoost(false)
+        if antiKickConnection then pcall(function() task.cancel(antiKickConnection) end); antiKickConnection = nil end
+        if currentTween then currentTween:Cancel() end
+        if ultraKillConnection then pcall(function() task.cancel(ultraKillConnection) end); ultraKillConnection = nil end
+        if ultraFarm2Loop then pcall(function() task.cancel(ultraFarm2Loop) end); ultraFarm2Loop = nil end
         State.noclip = false
     end
 end, function(popup)
@@ -557,7 +693,7 @@ local function enableFly()
     humanoid.PlatformStand = true
     
     connection = RunService.RenderStepped:Connect(function()
-        if not State.fly or State.autofarm or not rootPart or not bv or not bg then return end
+        if not State.fly or State.autofarm or State.ultrafarm or not rootPart or not bv or not bg then return end
         local camCF = camera.CFrame
         local dir = Vector3.zero
         if UserInputService:IsKeyDown(Enum.KeyCode.W)            then dir += camCF.LookVector        end
@@ -624,8 +760,6 @@ createModule(colMovement, "Noclip", function(on) State.noclip = on end)
 createModule(colMovement, "Infinite Jump", function(on) State.infjump = on end)
 createModule(colMovement, "Bunny Hop", function(on) State.bhop = on end)
 createModule(colMovement, "Click TP (Ctrl+Click)", function(on) State.clicktp = on end)
-
-createModule(colMisc, "Anti-Kick", function(on) State.antikick = on end)
 
 createModule(colMisc, "World Shaders", function(on)
     State.shaders = on
@@ -729,27 +863,6 @@ end, function(popup)
         btn.MouseButton1Click:Connect(function()
             applyPreset(tColor, fCol, fDens, sat, con)
         end)
-    end
-end)
-
-createModule(colMisc, "FPS Booster", function(on)
-    State.fpsboost = on
-    if on then
-        originalLightingProps.GlobalShadows = Lighting.GlobalShadows
-        originalLightingProps.FogEnd = Lighting.FogEnd
-        Lighting.GlobalShadows = false
-        Lighting.FogEnd = 999999
-        for _, obj in ipairs(Workspace:GetDescendants()) do
-            if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
-                obj.Enabled = false
-            elseif obj:IsA("BasePart") then
-                obj.Material = Enum.Material.SmoothPlastic
-                obj.Reflectance = 0
-            end
-        end
-    else
-        Lighting.GlobalShadows = originalLightingProps.GlobalShadows or true
-        Lighting.FogEnd = originalLightingProps.FogEnd or 100000
     end
 end)
 
@@ -973,7 +1086,7 @@ end)
 
 local originalCanCollide = {}
 RunService.Stepped:Connect(function()
-    if not State.noclip and not State.autofarm then return end
+    if not State.noclip and not State.autofarm and not State.ultrafarm then return end
     if not character then return end
     for _, p in ipairs(character:GetDescendants()) do
         if p:IsA("BasePart") then
@@ -1051,6 +1164,7 @@ local function clickClaimButton()
     end)
 end
 
+-- Логика обычного Auto Farm Method 1
 runSingleCycle = function(char)
     if not State.autofarm then return end
     local root = char:WaitForChild("HumanoidRootPart", 5)
@@ -1109,6 +1223,65 @@ startAutoKillLoop = function()
     end)
 end
 
+-- Логика Ultra Farm Method 1
+runUltraSingleCycle = function(char)
+    if not State.ultrafarm then return end
+    local root = char:WaitForChild("HumanoidRootPart", 5)
+    local humanoid = char:WaitForChild("Humanoid", 5)
+    if not root or not humanoid then return end
+    task.wait(0.5)
+    if not State.ultrafarm or humanoid.Health <= 0 then return end
+    State.noclip = true
+    local flightCompleted = true
+    local stages = Workspace:FindFirstChild("BoatStages") and Workspace.BoatStages:FindFirstChild("NormalStages")
+    if stages then
+        for i = 1, 10 do
+            if not State.ultrafarm or humanoid.Health <= 0 then flightCompleted = false; break end
+            local stage = stages:FindFirstChild("CaveStage" .. i)
+            if stage and stage:FindFirstChild("DarknessPart") then
+                local targetCF = stage.DarknessPart.CFrame
+                currentTween = TweenService:Create(root, TweenInfo.new((root.Position - targetCF.Position).Magnitude / State.farmSpeed, Enum.EasingStyle.Linear), {CFrame = targetCF})
+                currentTween:Play()
+                while currentTween and currentTween.PlaybackState == Enum.PlaybackState.Playing do
+                    if not State.ultrafarm or humanoid.Health <= 0 then currentTween:Cancel(); flightCompleted = false; break end
+                    task.wait(0.05)
+                end
+                task.wait(0.05)
+            else
+                flightCompleted = false
+            end
+        end
+    else
+        flightCompleted = false
+    end
+    if State.ultrafarm then
+        if flightCompleted and humanoid.Health > 0 then
+            local goldChest = Workspace:FindFirstChild("ClaimRiverResultsGold")
+            if goldChest then
+                root.CFrame = goldChest.CFrame
+                task.wait(0.2)
+                for _ = 1, 3 do clickClaimButton(); task.wait(0.2) end
+            end
+        end
+        forceKillCharacter(char)
+    end
+end
+
+startUltraKillLoop = function()
+    if ultraKillConnection then
+        pcall(function() task.cancel(ultraKillConnection) end)
+        ultraKillConnection = nil
+    end
+    ultraKillConnection = task.spawn(function()
+        while State.ultrafarm do
+            task.wait(19)
+            if State.ultrafarm and character then
+                forceKillCharacter(character)
+            end
+        end
+    end)
+end
+
 player.CharacterAdded:Connect(function(newChar)
     updateCharVars(newChar)
     if connection then connection:Disconnect(); connection = nil end
@@ -1118,12 +1291,22 @@ player.CharacterAdded:Connect(function(newChar)
     task.wait(1)
     if State.god and humanoid then humanoid.MaxHealth = math.huge; humanoid.Health = math.huge end
     if State.fly then enableFly() end
-    if State.autofarm then 
+    if State.autofarm then
         if State.farmMode == "Method 1" then
             startAutoKillLoop()
-            task.spawn(function() runSingleCycle(newChar) end) 
+            task.spawn(function() runSingleCycle(newChar) end)
         else
             startAutoFarm2Loop()
+        end
+    end
+    if State.ultrafarm then 
+        applyFpsBoost(true)
+        startAntiKick()
+        if State.farmMode == "Method 1" then
+            startUltraKillLoop()
+            task.spawn(function() runUltraSingleCycle(newChar) end) 
+        else
+            startUltraFarm2Loop()
         end
     end
 end)
