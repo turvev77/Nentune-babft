@@ -17,4 +17,4 @@
 Вместо того чтобы скачивать и копировать весь код вручную, вы можете запустить скрипт одной строкой прямо из вашего инжектора:
 
 ```lua
-loadstring(game:HttpGet("[https://raw.githubusercontent.com/turvev77/Nentune-babft/1614eacff11def671c5c8fcc2833d1846fbbbca0/Neptune.lua](https://raw.githubusercontent.com/turvev77/Nentune-babft/1614eacff11def671c5c8fcc2833d1846fbbbca0/Neptune.lua)"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/turvev77/Nentune-babft/main/Neptune.lua"))()
